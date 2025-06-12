@@ -1,4 +1,3 @@
-#include "bvh.hpp"
 #include "camera.hpp"
 #include "integrator.hpp"
 #include "renderer.hpp"
@@ -22,9 +21,11 @@ int main(int argc, char **argv)
 	Camera camera{};
 	camera.FOVy = 60.0F;
 	camera.aspectRatio = static_cast<float>(config.resolutionX) / static_cast<float>(config.resolutionY);
+	camera.position = { 0.0F, 1.0F, 3.0F };
+	camera.forward = { 0.0F, 0.0F, -1.0F };
 
 	// Set up scene & integrator
-	Scene scene = Scene::fromFile("assets/cornell.obj");
+	Scene scene = Scene::fromFile("./assets/CornellBox.obj");
 	PathTracedIntegrator integrator(10 /* max bounce depth */);
 	integrator.setSceneData(scene);
 

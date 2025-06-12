@@ -1,8 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <tiny_bvh.h>
 
-#include "bvh.hpp"
 #include "ray.hpp"
 #include "sampler.hpp"
 #include "scene.hpp"
@@ -44,6 +44,22 @@ public:
 	glm::vec3 trace(Ray const& ray, Sampler& sampler) const override;
 
 private:
-	uint32_t				m_maxBounceDepth		= 5;
-	std::shared_ptr<BVH>	m_accelerationStructure = {};
+	struct RenderInstance
+	{
+		uint32_t object;
+		uint32_t material;
+	};
+
+private:
+	uint32_t									m_maxBounceDepth	= 5;
+	Scene const*								m_pScene			= nullptr;
+
+	// -- Scene Data --
+	std::vector<RenderInstance>					m_instances			= {};
+
+	// -- Acceleration Structures --
+	std::vector<std::shared_ptr<tinybvh::BVH>>	m_blasses			= {};
+	std::vector<tinybvh::BVHBase*>				m_blasPointers		= {}; //< required for tinybvh blas instancing :/
+	std::vector<tinybvh::BLASInstance>			m_blasInstances		= {};
+	std::shared_ptr<tinybvh::BVH>				m_tlas				= {};
 };
