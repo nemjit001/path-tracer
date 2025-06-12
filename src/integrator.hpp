@@ -5,6 +5,7 @@
 #include "bvh.hpp"
 #include "ray.hpp"
 #include "sampler.hpp"
+#include "scene.hpp"
 
 /// @brief The Integrator class can be used to sample scenes using different rendering equation integration algorithms.
 class Integrator
@@ -15,6 +16,10 @@ public:
 
 	Integrator(Integrator const&) = default;
 	Integrator& operator=(Integrator const&) = default;
+
+	/// @brief Set the integrator scene data.
+	/// @param scene 
+	virtual void setSceneData(Scene const& scene) = 0;
 
 	/// @brief Trace a ray through the integrator scene.
 	/// @param ray Ray to trace.
@@ -33,6 +38,8 @@ public:
 
 	PathTracedIntegrator(PathTracedIntegrator const&) = default;
 	PathTracedIntegrator &operator=(PathTracedIntegrator const&) = default;
+
+	void setSceneData(Scene const& scene) override;
 
 	glm::vec3 trace(Ray const& ray, Sampler& sampler) const override;
 

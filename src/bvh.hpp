@@ -17,10 +17,11 @@ enum class GeometryType : uint8_t
 };
 
 /// @brief Strided vertex position pointer, allows packed vertex data to be accessed as float3 positions.
-struct StridedVertexPosition
+struct StridedVertexPositions
 {
-	glm::vec3* position;
+	void* positions;
 	size_t stride;
+	size_t count;
 };
 
 /// @brief Geometry data for a BVH, allows setting the geometry type and geometry pointers.
@@ -28,7 +29,7 @@ struct Geometry
 {
 	GeometryType type;
 	union GeometryData {
-		StridedVertexPosition vertices;
+		StridedVertexPositions vertices;
 	} data;
 };
 
@@ -62,6 +63,9 @@ public:
 	/// @param tMax Max distance to use for intersection.
 	/// @return 
 	Intersection intersect(Ray const& ray, float tMin, float tMax) const;
+
+private:
+	void buildTriangles(StridedVertexPositions positions);
 
 private:
 	/// @brief 32 byte BVH node layout for tightly packed of BVH node data.
