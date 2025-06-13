@@ -22,7 +22,9 @@ void PathTracedIntegrator::setSceneData(Scene const& scene)
 
 	// Generate render instances
 	m_instances.clear();
-	// TODO(nemjit001): generate instances based on scene node data
+	for (auto const& object : scene.objects) {
+		m_instances.push_back(RenderInstance{ object.mesh, object.material });
+	}
 
 	// Create BLASses for meshes in scene
 	m_blasses.clear();
@@ -87,14 +89,13 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 		
 		m_tlas->Intersect(current);
 		if (current.hit.t >= BVH_FAR) {
-			// Miss, evaluate environment
+			// Evaluate environment
 			// TODO(nemjit001): Evaluate environment color (HDRI, color, whatever)
 			energy += throughput * glm::vec3(0.3F, 0.6F, 0.9F); //< just some blue color
 			break;
 		}
 		else {
-			// Hit, evaluate geometry & material
-			// Get hit geometry from scene
+			// Get hit geometry & material from scene
 			RenderInstance const& instance = m_instances[current.hit.inst];
 			Mesh const& mesh = m_pScene->meshes[instance.object];
 			Material const& material = m_pScene->materials[instance.material];
@@ -108,12 +109,13 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			// Interpolate triangle data according to hit UV
 			glm::vec2 const uv(current.hit.u, current.hit.v);
 			glm::vec3 const position = v0.position + uv.x * (v1.position - v0.position) + uv.y * (v2.position - v0.position);
-			glm::vec3 const normal = glm::normalize(v0.normal + uv.x * (v1.normal - v0.normal) + uv.y * (v2.normal - v0.normal));
-			glm::vec3 const tangent = glm::normalize(v0.tangent + uv.x * (v1.tangent - v0.tangent) + uv.y * (v2.tangent - v0.tangent));
-			glm::vec3 const bitangent = glm::normalize(glm::cross(tangent, normal));
+
+			glm::vec3 const N = glm::normalize(v0.normal + uv.x * (v1.normal - v0.normal) + uv.y * (v2.normal - v0.normal));
+			glm::vec3 const T = glm::normalize(v0.tangent + uv.x * (v1.tangent - v0.tangent) + uv.y * (v2.tangent - v0.tangent));
+			glm::vec3 const B = glm::normalize(glm::cross(T, N));
 
 			// TODO(nemjit001): evaluate material etc. & sample new ray direction using material BRDF.
-			energy = 0.5F + 0.5F * normal;
+			energy += 0.5F + 0.5F * N;
 			break;
 		}
 	}
