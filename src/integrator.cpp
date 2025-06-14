@@ -133,7 +133,7 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			LambertianBRDF brdf(material.baseColor);
 			glm::vec3 const wi = -rayDirection;
 			glm::vec3 const wo = TBN * brdf.sample(sampler);
-			throughput *= brdf.evaluate(wi, wo, N) / brdf.pdf(wo, N);
+			throughput *= (brdf.evaluate(wi, wo, N) * glm::dot(wo, N)) / brdf.pdf(wo, N);
 
 			glm::vec3 const D = wo;
 			glm::vec3 const O = glm::vec3(position) + D * tMin; // avoid self intersections by offsetting ray a small amount
