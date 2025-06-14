@@ -61,10 +61,10 @@ void Renderer::render(RendererConfig const& config, Camera const& camera, Integr
 		glm::vec4 const gamma = glm::vec4(glm::pow(glm::vec3(pixel), glm::vec3(1.0F / 2.2F)), pixel.a);
 
 		// Do byte packing
-		uint32_t const r = static_cast<uint32_t>(gamma.r * 255.99F) & 0xFF;
-		uint32_t const g = static_cast<uint32_t>(gamma.g * 255.99F) & 0xFF;
-		uint32_t const b = static_cast<uint32_t>(gamma.b * 255.99F) & 0xFF;
-		uint32_t const a = static_cast<uint32_t>(gamma.a * 255.99F) & 0xFF;
+		uint32_t const r = static_cast<uint32_t>(glm::clamp(gamma.r, 0.0F, 1.0F) * 255.99F) & 0xFF;
+		uint32_t const g = static_cast<uint32_t>(glm::clamp(gamma.g, 0.0F, 1.0F) * 255.99F) & 0xFF;
+		uint32_t const b = static_cast<uint32_t>(glm::clamp(gamma.b, 0.0F, 1.0F) * 255.99F) & 0xFF;
+		uint32_t const a = static_cast<uint32_t>(glm::clamp(gamma.a, 0.0F, 1.0F) * 255.99F) & 0xFF;
 		bytes[i] = (a << 24) + (b << 16) + (g << 8) + r;
 	}
 

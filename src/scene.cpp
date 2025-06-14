@@ -124,7 +124,7 @@ Scene Scene::fromFile(std::string const& path)
 			glm::vec2 const dUV2 = v2.texcoord - v0.texcoord;
 			float const f = 1.0F / (dUV1.x * dUV2.y - dUV1.y * dUV2.x);
 
-			// Calculate tangent & normal
+			// Calculate tangent
 			glm::vec3 const normal = glm::normalize(glm::cross(e1, e2));
 			glm::vec3 const tangent = f * (dUV2.y * e1 - dUV1.y * e2);
 

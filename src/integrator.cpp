@@ -5,6 +5,8 @@
 #include <cassert>
 #include <tiny_bvh.h>
 
+#include "brdf.hpp"
+
 PathTracedIntegrator::PathTracedIntegrator(uint32_t maxBounceDepth)
 	:
 	m_maxBounceDepth(maxBounceDepth)
@@ -96,9 +98,9 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 		}
 		else {
 			// Get hit geometry & material from scene
-			RenderInstance const& instance = m_instances[current.hit.inst];
-			Mesh const& mesh = m_pScene->meshes[instance.object];
-			Material const& material = m_pScene->materials[instance.material];
+			RenderInstance const& instance	= m_instances[current.hit.inst];
+			Mesh const& mesh				= m_pScene->meshes[instance.object];
+			Material const& material		= m_pScene->materials[instance.material];
 
 			// Get hit triangle from mesh
 			uint32_t const& idx = mesh.indices[current.hit.prim * 3];
@@ -106,17 +108,36 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			Vertex const& v1 = mesh.vertices[idx + 1];
 			Vertex const& v2 = mesh.vertices[idx + 2];
 
+			// Get ray direction
+			tinybvh::bvhvec3 pos = current.O + current.hit.t * current.D;
+			glm::vec3 const rayDirection = glm::vec3(current.D.x, current.D.y, current.D.z);
+
 			// Interpolate triangle data according to hit UV
-			glm::vec2 const uv(current.hit.u, current.hit.v);
-			glm::vec3 const position = v0.position + uv.x * (v1.position - v0.position) + uv.y * (v2.position - v0.position);
+			glm::vec2 const uv			= { current.hit.u, current.hit.v };
+			glm::vec3 const position	= { pos.x, pos.y, pos.z };// v0.position + uv.x * (v0.position - v1.position) + uv.y * (v0.position - v1.position);
+			glm::vec3 const normal		= glm::normalize(v0.normal + uv.x * v1.normal + uv.y * v2.normal);
+			glm::vec3 const tangent		= glm::normalize(v0.tangent + uv.x * v1.tangent + uv.y * v2.tangent);
 
-			glm::vec3 const N = glm::normalize(v0.normal + uv.x * (v1.normal - v0.normal) + uv.y * (v2.normal - v0.normal));
-			glm::vec3 const T = glm::normalize(v0.tangent + uv.x * (v1.tangent - v0.tangent) + uv.y * (v2.tangent - v0.tangent));
-			glm::vec3 const B = glm::normalize(glm::cross(T, N));
+			// Set up TBN matrix for global/local frame conversion (also adjusts normal and tangent for backface hits)
+			bool const isBackfaceHit = glm::dot(rayDirection, normal) > 0.0F;
+			glm::vec3 const N = (isBackfaceHit ? -normal : normal);
+			glm::vec3 const T = (isBackfaceHit ? -tangent : tangent);
+			glm::vec3 const B = glm::normalize(glm::cross(N, T));
+			glm::mat3 const TBN(T, B, N);
 
-			// TODO(nemjit001): evaluate material etc. & sample new ray direction using material BRDF.
-			energy += 0.5F + 0.5F * N;
-			break;
+			// Shade hitpoint
+			if (material.emission.x > 0.0F || material.emission.y > 0.0F || material.emission.z > 0.0F) {
+				energy += throughput * material.emission;
+			}
+
+			LambertianBRDF brdf(material.baseColor);
+			glm::vec3 const wi = -rayDirection;
+			glm::vec3 const wo = TBN * brdf.sample(sampler);
+			throughput *= brdf.evaluate(wi, wo, N) / brdf.pdf(wo, N);
+
+			glm::vec3 const D = wo;
+			glm::vec3 const O = glm::vec3(position) + D * tMin; // avoid self intersections by offsetting ray a small amount
+			current = tinybvh::Ray({ O.x, O.y, O.z }, { D.x, D.y, D.z });
 		}
 	}
 

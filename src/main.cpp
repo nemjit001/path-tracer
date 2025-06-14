@@ -16,9 +16,9 @@ int main(int argc, char **argv)
 	// FIXME(nemjit001): load this from either CLI args or scene format
 	RendererConfig config{};
 	config.filename = "render.png";
-	config.resolutionX = 512;
-	config.resolutionY = 512;
-	config.sampleCount = 64;
+	config.resolutionX = 1024;
+	config.resolutionY = 1024;
+	config.sampleCount = 128;
 
 	printf("Render config\n");
 	printf("  Resolution X: %u\n", config.resolutionX);
@@ -31,7 +31,7 @@ int main(int argc, char **argv)
 	Camera camera{};
 	camera.FOVy = 60.0F;
 	camera.aspectRatio = static_cast<float>(config.resolutionX) / static_cast<float>(config.resolutionY);
-	camera.position = { 0.0F, 1.0F, 2.5F };
+	camera.position = { 0.0F, 1.0F, 3.0F };
 	camera.forward = { 0.0F, 0.0F, -1.0F };
 
 	// Set up scene
