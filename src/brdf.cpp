@@ -14,7 +14,7 @@ LambertianBRDF::LambertianBRDF(glm::vec3 const& baseColor)
 	//
 }
 
-glm::vec3 LambertianBRDF::sample(Sampler& sampler) const
+glm::vec3 LambertianBRDF::sample(Sampler& sampler, glm::vec3 const& wi, glm::vec3 const& N) const
 {
 #if COSINE_WEIGHTED_PDF
 	glm::vec2 const r = sampler.sample2D();

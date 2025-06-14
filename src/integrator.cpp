@@ -130,14 +130,23 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 				energy += throughput * material.emission;
 			}
 
-			LambertianBRDF brdf(material.baseColor);
+			LambertianBRDF const diffuse(material.baseColor);
 			glm::vec3 const wi = -rayDirection;
-			glm::vec3 const wo = TBN * brdf.sample(sampler);
-			throughput *= (brdf.evaluate(wi, wo, N) * glm::dot(wo, N)) / brdf.pdf(wo, N);
+			glm::vec3 const wo = TBN * diffuse.sample(sampler, wi, N);
+			throughput *= (diffuse.evaluate(wi, wo, N) * glm::dot(wo, N)) / diffuse.pdf(wo, N);
 
+			// Set up outgoing ray
 			glm::vec3 const D = wo;
 			glm::vec3 const O = glm::vec3(position) + D * tMin; // avoid self intersections by offsetting ray a small amount
 			current = tinybvh::Ray({ O.x, O.y, O.z }, { D.x, D.y, D.z });
+
+			// Do russian roulette (terminate if throughput has low contribution)
+			float const p = glm::clamp(glm::max(throughput.r, glm::max(throughput.g, throughput.b)), 0.0F, 1.0F);
+			if (p < sampler.sample()) {
+				break;
+			}
+
+			throughput /= p;
 		}
 	}
 
