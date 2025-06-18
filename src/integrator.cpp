@@ -109,12 +109,11 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			Vertex const& v2 = mesh.vertices[idx + 2];
 
 			// Get ray direction
-			tinybvh::bvhvec3 pos = current.O + current.hit.t * current.D;
 			glm::vec3 const rayDirection = glm::vec3(current.D.x, current.D.y, current.D.z);
 
 			// Interpolate triangle data according to hit UV
 			glm::vec2 const uv			= { current.hit.u, current.hit.v };
-			glm::vec3 const position	= { pos.x, pos.y, pos.z };// v0.position + uv.x * (v0.position - v1.position) + uv.y * (v0.position - v1.position);
+			glm::vec3 const position	= v0.position + uv.x * (v1.position - v0.position) + uv.y * (v2.position - v0.position);
 			glm::vec3 const normal		= glm::normalize(v0.normal + uv.x * v1.normal + uv.y * v2.normal);
 			glm::vec3 const tangent		= glm::normalize(v0.tangent + uv.x * v1.tangent + uv.y * v2.tangent);
 
