@@ -7,6 +7,8 @@
 
 #include "brdf.hpp"
 
+#define DO_RUSSIAN_ROULETTE 0
+
 PathTracedIntegrator::PathTracedIntegrator(uint32_t maxBounceDepth)
 	:
 	m_maxBounceDepth(maxBounceDepth)
@@ -129,16 +131,17 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 				energy += throughput * material.emission;
 			}
 
-			LambertianBRDF const diffuse(material.baseColor);
+			DielectricBRDF brdf(material.baseColor, material.roughness, 1.5F);
 			glm::vec3 const wi = -rayDirection;
-			glm::vec3 const wo = TBN * diffuse.sample(sampler, wi, N);
-			throughput *= (diffuse.evaluate(wi, wo, N) * glm::dot(wo, N)) / diffuse.pdf(wo, N);
+			glm::vec3 const wo = TBN * brdf.sample(sampler, wi, N);
+			throughput *= (brdf.evaluate(wi, wo, N) * glm::dot(wo, N)) / brdf.pdf(wi, wo, N);
 
 			// Set up outgoing ray
 			glm::vec3 const D = wo;
 			glm::vec3 const O = glm::vec3(position) + D * tMin; // avoid self intersections by offsetting ray a small amount
 			current = tinybvh::Ray({ O.x, O.y, O.z }, { D.x, D.y, D.z });
-
+			
+#if			RUSSIAN_ROULETTE
 			// Do russian roulette (terminate if throughput has low contribution)
 			float const p = glm::clamp(glm::max(throughput.r, glm::max(throughput.g, throughput.b)), 0.0F, 1.0F);
 			if (p < sampler.sample()) {
@@ -146,6 +149,7 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			}
 
 			throughput /= p;
+#endif		// RUSSIAN_ROULETTE
 		}
 	}
 

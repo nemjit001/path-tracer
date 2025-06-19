@@ -46,6 +46,12 @@ file(GLOB_RECURSE PATH_TRACER_ASSETS CONFIGURE_DEPENDS "assets/*")
 add_executable(PathTracer ${PATH_TRACER_SOURCES} ${PATH_TRACER_HEADERS})
 target_link_libraries(PathTracer PRIVATE glm::glm stb tinybvh tinyobjloader)
 
+if (MSVC)
+    target_compile_options(PathTracer PRIVATE /W4)
+else()
+    target_compile_options(PathTracer PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 if (NOT MSVC)
     target_compile_options(PathTracer PRIVATE -march=native)
 endif()
