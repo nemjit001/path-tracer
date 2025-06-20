@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+find_package(OpenMP REQUIRED)
+
 # Fetch dependencies
 include(FetchContent)
 FetchContent_Declare(glm
@@ -44,7 +46,7 @@ file(GLOB_RECURSE PATH_TRACER_HEADERS CONFIGURE_DEPENDS "src/*.hpp")
 file(GLOB_RECURSE PATH_TRACER_ASSETS CONFIGURE_DEPENDS "assets/*")
 
 add_executable(PathTracer ${PATH_TRACER_SOURCES} ${PATH_TRACER_HEADERS})
-target_link_libraries(PathTracer PRIVATE glm::glm stb tinybvh tinyobjloader)
+target_link_libraries(PathTracer PRIVATE glm::glm stb tinybvh tinyobjloader OpenMP::OpenMP_CXX)
 
 if (MSVC)
     target_compile_options(PathTracer PRIVATE /W4)

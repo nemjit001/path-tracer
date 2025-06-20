@@ -5,146 +5,119 @@ static constexpr float TWO_PI	= 2.0F * PI;
 static constexpr float INV_PI	= 1.0F / PI;
 static constexpr float INV_2PI	= 1.0F / TWO_PI;
 
-#define COSINE_WEIGHTED_PDF	1
-
-LambertianBRDF::LambertianBRDF(glm::vec3 const& baseColor)
-	:
-	m_baseColor(baseColor)
+glm::vec3 sampleCosineWeightedHemisphere(Sampler& sampler)
 {
-	//
-}
-
-glm::vec3 LambertianBRDF::sample(Sampler& sampler, glm::vec3 const& wi, glm::vec3 const& n) const
-{
-#if COSINE_WEIGHTED_PDF
-	glm::vec2 const r = sampler.sample2D();
-	float const theta = glm::acos(glm::sqrt(r.x));
-	float const phi = TWO_PI * r.y;
+	glm::vec2 const eta = sampler.sample2D();
+	float const theta = glm::acos(glm::sqrt(eta.x));
+	float const phi = TWO_PI * eta.y;
 
 	return glm::vec3(glm::sin(theta) * glm::cos(phi), glm::sin(theta) * glm::sin(phi), glm::cos(theta));
-#else
-	glm::vec3 dir{};
-	do {
-		dir.x = sampler.sampleRange(-1.0F, 1.0F);
-		dir.y = sampler.sampleRange(-1.0F, 1.0F);
-		dir.z = sampler.sampleRange(-1.0F, 1.0F);
-	} while (glm::dot(dir, dir) > 1.0F);
-
-	if (dir.z < 0.0F) {
-		dir = -dir;
-	}
-	return glm::normalize(dir);
-#endif
 }
 
-glm::vec3 LambertianBRDF::evaluate(glm::vec3 const& wi, glm::vec3 const& wo, glm::vec3 const& n) const
-{
-	return m_baseColor * INV_PI;
-}
-
-float LambertianBRDF::pdf(glm::vec3 const& wi, glm::vec3 const& wo, glm::vec3 const& n) const
-{
-#if COSINE_WEIGHTED_PDF
-	return glm::dot(wo, n) * INV_PI;
-#else
-	return INV_2PI;
-#endif
-}
-
-SmoothMetallicBRDF::SmoothMetallicBRDF(glm::vec3 const& baseColor)
-	:
-	m_baseColor(baseColor)
-{
-	//
-}
-
-glm::vec3 SmoothMetallicBRDF::sample(Sampler& sampler, glm::vec3 const& wi, glm::vec3 const& n) const
-{
-	return glm::reflect(-wi, n);
-}
-
-glm::vec3 SmoothMetallicBRDF::evaluate(glm::vec3 const& wi, glm::vec3 const& wo, glm::vec3 const& n) const
-{
-	return m_baseColor;
-}
-
-float SmoothMetallicBRDF::pdf(glm::vec3 const& wi, glm::vec3 const& wo, glm::vec3 const& n) const
-{
-	return 1.0F;
-}
-
-DielectricBRDF::DielectricBRDF(glm::vec3 const& baseColor, float roughness, float IOR)
-	:
-	m_albedo(baseColor),
-	m_roughness(roughness),
-	m_alpha(roughness * roughness),
-	m_ior(IOR)
-{
-	// Clamp alpha to avoid NaNs during sampling at 0 roughness
-	m_alpha = glm::clamp(m_alpha, 1e-3F, 1.0F);
-}
-
-glm::vec3 DielectricBRDF::sample(Sampler& sampler, glm::vec3 const& wi, glm::vec3 const& n) const
+glm::vec3 sampleGGX(Sampler& sampler, glm::vec3 const& wi, float alpha)
 {
 	// Calculate microfacet normal polar coordinates using Disney's GTR2 sampling
 	glm::vec2 const eta = sampler.sample2D();
-	float const a2 = m_alpha * m_alpha;
+	float const a2 = alpha * alpha;
 	float const r = (1.0F - eta.x) / (1.0F + (a2 - 1.0F) * eta.x);
 	float const theta = glm::acos(glm::sqrt(r));
 	float const phi = TWO_PI * eta.y;
 
 	// Transform polar to vector
-	glm::vec3 const& m = glm::vec3(glm::sin(theta) * glm::cos(phi), glm::sin(theta) * glm::sin(phi), glm::cos(theta));
-	return glm::reflect(-wi, glm::normalize(m));
+	glm::vec3 const m = glm::vec3(glm::sin(theta) * glm::cos(phi), glm::sin(theta) * glm::sin(phi), glm::cos(theta));
+	return glm::reflect(-wi, m);
 }
 
-glm::vec3 DielectricBRDF::evaluate(glm::vec3 const& wi, glm::vec3 const& wo, glm::vec3 const& n) const
+float DGGX(glm::vec3 const& m, glm::vec3 const& n, float alpha)
 {
-	// Calculate microfacet normal
-	glm::vec3 const& m = glm::normalize(wi + wo);
-
-	// Air-Material transition
-	float const eta1 = m_ior - 1.0F;
-	float const eta2 = m_ior + 1.0F;
-	float const iorRatio = (eta1 / eta2);
-	glm::vec3 const F0 = glm::vec3(iorRatio * iorRatio);
-
-	// Calculate Smith G term
-	float const GSmith = G1Schlick(wi, m) * G1Schlick(wo, m);
-
-	// Calculate diffuse & specular components
-	glm::vec3 const diffuse = m_albedo * INV_PI;
-	glm::vec3 const specular = (DGGX(m, n) * FSchlick(wi, m, F0) * GSmith) / (4.0F * glm::abs(glm::dot(wi, n)) * glm::abs(glm::dot(wo, n)));
-
-	return diffuse + specular;
+	float const a2 = alpha * alpha;
+	float const cosTheta = glm::dot(m, n);
+	float const d = 1.0F + (a2 - 1.0F) * cosTheta * cosTheta;
+	return a2 / (PI * d * d);
 }
 
-float DielectricBRDF::pdf(glm::vec3 const& wi, glm::vec3 const& wo, glm::vec3 const& n) const
+float FSchlick(glm::vec3 const& v, glm::vec3 const& n, float F)
 {
-	glm::vec3 const m = glm::normalize(wi + wo);
-	return (DGGX(m, n) * glm::dot(m, n)) / (4.0F * glm::abs(glm::dot(wo, m)));
+	float c = 1.0F - glm::clamp(glm::dot(n, v), 0.0F, 1.0F);
+	float c5 = c * c * c * c * c;
+	return 1.0F + (F - 1.0F) * c5;
 }
 
-float DielectricBRDF::G1Schlick(glm::vec3 const& n, glm::vec3 const& v) const
+float G1Schlick(glm::vec3 const& v, glm::vec3 const& n, float alpha)
 {
-	float const NoV = glm::clamp(glm::dot(v, n), 0.0F, 1.0F);
-	float const a2 = m_alpha * m_alpha;
+	float const NoV = glm::clamp(glm::dot(n, v), 0.0F, 1.0F);
+	float const a2 = alpha * alpha;
 	float const k = glm::sqrt(2.0F * a2 * INV_PI);
 
 	return NoV / (NoV - (k * NoV) + k);
 }
 
-glm::vec3 DielectricBRDF::FSchlick(glm::vec3 const& v, glm::vec3 const& n, glm::vec3 const& F0) const
+glm::vec3 evaluateLambertianDiffuseBRDF(Sampler& sampler, Material const& material, glm::vec3 const& wi, glm::vec3 const& n, glm::vec3& wo)
 {
-	float c = 1.0F - glm::clamp(glm::dot(v, n), 0.0F, 1.0F);
-	float c5 = c * c * c * c * c;
-	return 1.0F + (F0 - 1.0F) * c5;
+	wo = sampleCosineWeightedHemisphere(sampler);
+	glm::vec3 const brdf = material.baseColor * INV_PI;
+	float const pdf = glm::dot(wo, n) * INV_PI;
+
+	return (brdf * glm::dot(wo, n)) / pdf;
 }
 
-float DielectricBRDF::DGGX(glm::vec3 const& m, glm::vec3 const& n) const
+glm::vec3 evaluateDielectricMicrofacetBRDF(Sampler& sampler, Material const& material, glm::vec3 const& wi, glm::vec3 const& n, glm::vec3& wo)
 {
-	float const a2 = m_alpha * m_alpha;
-	float const cosTheta2 = glm::dot(n, m) * glm::dot(n, m);
-	float const d = 1.0F + (a2 - 1.0F) * cosTheta2;
-	return a2 / (PI * d * d);
+	// Set up microfacet model parameters
+	float const alpha = material.roughness * material.roughness;
+
+	// Sample Diffuse & GGX lobes
+	glm::vec3 const m = sampleGGX(sampler, wi, alpha);
+	glm::vec3 const woDiffuse = sampleCosineWeightedHemisphere(sampler);
+	glm::vec3 const woSpecular = glm::reflect(-wi, m);
+
+	// Calculate F0 for dielectric material
+	float const eta1 = material.IOR - 1.0F;
+	float const eta2 = material.IOR + 1.0F;
+	float const iorRatio = eta1 / eta2;
+	float const F0 = iorRatio * iorRatio;
+
+	// Calculate Microfacet terms
+	float const D = DGGX(m, n, alpha);
+	float const G = G1Schlick(wi, m, alpha) * G1Schlick(woSpecular, m, alpha); // Smith's G term
+	float const F = FSchlick(wi, m, F0);
+
+	// Calculate MIS PDF weights
+	float const diffuseWeight = material.roughness;		// Diffuse chance
+	float const specularWeight = 1.0F - diffuseWeight;	// Specular chance
+
+	float const pdfDiffuse = glm::dot(woDiffuse, n) * INV_PI;
+	float const pdfSpecular = (D * glm::dot(m, n)) / (4.0F * glm::abs(glm::dot(woSpecular, m)));
+
+	// Calculate composite PDF for MIS
+	float const compositePDF = (diffuseWeight * pdfDiffuse) + (specularWeight * pdfSpecular);
+
+	// Perform MIS for lambertian & GGX lobes
+	glm::vec3 brdf{};
+	float pdf{};
+	float weightMIS{};
+	if (sampler.sample() < diffuseWeight)
+	{
+		// Evaluate diffuse
+		wo = woDiffuse;
+
+		float const F90 = 0.5F + 2.0F * material.roughness * glm::dot(wi, m) * glm::dot(wi, m);
+		float const a = FSchlick(wi, n, F90);
+		float const b = FSchlick(wo, n, F90);
+
+		brdf = material.baseColor * INV_PI * a * b;
+		pdf = pdfDiffuse;
+		weightMIS = (diffuseWeight * pdfDiffuse) / compositePDF;
+	}
+	else
+	{
+		// Evaluate specular
+		wo = woSpecular;
+
+		brdf = glm::vec3((D * G * F) / (4.0F * glm::abs(glm::dot(wi, n)) * glm::abs(glm::dot(wo, n))));
+		pdf = pdfSpecular;
+		weightMIS = (specularWeight * pdfSpecular) / compositePDF;
+	}
+
+	return weightMIS * ((brdf * glm::dot(wo, n)) / pdf);
 }

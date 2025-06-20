@@ -18,7 +18,7 @@ int main(int argc, char **argv)
 	config.filename = "render.png";
 	config.resolutionX = 1024;
 	config.resolutionY = 1024;
-	config.sampleCount = 128;
+	config.sampleCount = 256;
 
 	printf("Render config\n");
 	printf("  Resolution X: %u\n", config.resolutionX);

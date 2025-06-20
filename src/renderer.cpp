@@ -15,10 +15,10 @@ void Renderer::render(RendererConfig const& config, Camera const& camera, Integr
 	ViewPyramid const view = camera.generateViewPyramid();
 
 	// Render frame
-	printf("Starting render\n");
+	printf("Starting render...\n");	
+	#pragma omp parallel for schedule(dynamic)
 	for (uint32_t y = 0; y < config.resolutionY; y++)
 	{
-		printf("Scanline %u/%u\n", y + 1, config.resolutionY);
 		for (uint32_t x = 0; x < config.resolutionX; x++)
 		{
 			uint32_t const pixelSeed = (x + y * config.resolutionX) + 0x1234;
