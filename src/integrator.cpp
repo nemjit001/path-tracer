@@ -7,6 +7,8 @@
 
 #include "brdf.hpp"
 
+#define DO_RUSSIAN_ROULETTE 1
+
 PathTracedIntegrator::PathTracedIntegrator(uint32_t maxBounceDepth)
 	:
 	m_maxBounceDepth(maxBounceDepth)
@@ -123,22 +125,24 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			glm::vec3 const T = (isBackfaceHit ? -tangent : tangent);
 			glm::vec3 const B = glm::normalize(glm::cross(N, T));
 			glm::mat3 const TBN(T, B, N);
+			glm::mat3 const iTBN(glm::transpose(TBN));
 
 			// Shade hitpoint
 			if (material.emission.x > 0.0F || material.emission.y > 0.0F || material.emission.z > 0.0F) {
 				energy += throughput * material.emission;
 			}
 
-			LambertianBRDF const diffuse(material.baseColor);
-			glm::vec3 const wi = -rayDirection;
-			glm::vec3 const wo = TBN * diffuse.sample(sampler, wi, N);
-			throughput *= (diffuse.evaluate(wi, wo, N) * glm::dot(wo, N)) / diffuse.pdf(wo, N);
+			glm::vec3 const shadingNormal = iTBN * N;
+			glm::vec3 const wi = iTBN * -rayDirection;
+			glm::vec3 wo;
+			throughput *= evaluateDisneyBRDF(sampler, material, wi, shadingNormal, wo);
 
 			// Set up outgoing ray
-			glm::vec3 const D = wo;
+			glm::vec3 const D = TBN * wo;
 			glm::vec3 const O = glm::vec3(position) + D * tMin; // avoid self intersections by offsetting ray a small amount
 			current = tinybvh::Ray({ O.x, O.y, O.z }, { D.x, D.y, D.z });
-
+			
+#if			RUSSIAN_ROULETTE
 			// Do russian roulette (terminate if throughput has low contribution)
 			float const p = glm::clamp(glm::max(throughput.r, glm::max(throughput.g, throughput.b)), 0.0F, 1.0F);
 			if (p < sampler.sample()) {
@@ -146,6 +150,7 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			}
 
 			throughput /= p;
+#endif		// RUSSIAN_ROULETTE
 		}
 	}
 

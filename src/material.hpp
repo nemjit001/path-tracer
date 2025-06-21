@@ -11,4 +11,5 @@ public:
 	glm::vec3	emission	= { 0.0F, 0.0F, 0.0F };
 	float		metallic	= 0.0F;
 	float		roughness	= 0.5F;
+	float		IOR			= 1.5F; // Index of Refraction
 };

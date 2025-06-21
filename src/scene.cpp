@@ -42,6 +42,7 @@ Scene Scene::fromFile(std::string const& path)
 		material.emission	= { objmat.emission[0], objmat.emission[1], objmat.emission[2] };
 		material.metallic	= objmat.metallic;
 		material.roughness	= objmat.roughness;
+		material.IOR		= objmat.ior;
 
 		scene.materials.push_back(material);
 	}
