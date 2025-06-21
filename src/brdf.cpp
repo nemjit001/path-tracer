@@ -5,11 +5,17 @@ static constexpr float TWO_PI	= 2.0F * PI;
 static constexpr float INV_PI	= 1.0F / PI;
 static constexpr float INV_2PI	= 1.0F / TWO_PI;
 
+/// @brief Calculate the Luma value of a color (linear RGB to luma)
+/// @param color 
+/// @return 
 float luma(glm::vec3 const& color)
 {
 	return glm::dot(color, glm::vec3(0.299F, 0.587F, 0.114F));
 }
 
+/// @brief Sample a cosine weighted hemisphere.
+/// @param sampler 
+/// @return 
 glm::vec3 sampleCosineWeightedHemisphere(Sampler& sampler)
 {
 	glm::vec2 const eta = sampler.sample2D();
@@ -19,7 +25,12 @@ glm::vec3 sampleCosineWeightedHemisphere(Sampler& sampler)
 	return glm::vec3(glm::sin(theta) * glm::cos(phi), glm::sin(theta) * glm::sin(phi), glm::cos(theta));
 }
 
-glm::vec3 sampleGGX(Sampler& sampler, glm::vec3 const& wi, float alpha)
+/// @brief Sample GTR2 GGX lobe as described in Physically Based Shading at Disney.
+/// @param sampler 
+/// @param wi Incoming view direction.
+/// @param alpha Roughness of distribution.
+/// @return A microfacet normal m from the GGX distribution.
+glm::vec3 sampleGGX(Sampler& sampler, float alpha)
 {
 	// Calculate microfacet normal polar coordinates using Disney's GTR2 sampling
 	glm::vec2 const eta = sampler.sample2D();
@@ -30,9 +41,14 @@ glm::vec3 sampleGGX(Sampler& sampler, glm::vec3 const& wi, float alpha)
 
 	// Transform polar to vector
 	glm::vec3 const m = glm::vec3(glm::sin(theta) * glm::cos(phi), glm::sin(theta) * glm::sin(phi), glm::cos(theta));
-	return glm::reflect(-wi, m);
+	return m;
 }
 
+/// @brief The GGX microfacet distribution as given by Physically Based Shading at Disney.
+/// @param m Microfacet normal.
+/// @param n Shading normal.
+/// @param alpha Distribution roughness.
+/// @return Desnitry of microfacet normals for direction m.
 float DGGX(glm::vec3 const& m, glm::vec3 const& n, float alpha)
 {
 	float const a2 = alpha * alpha;
@@ -41,6 +57,11 @@ float DGGX(glm::vec3 const& m, glm::vec3 const& n, float alpha)
 	return a2 / (PI * d * d);
 }
 
+/// @brief Schlick's Fresnel approximation.
+/// @param v Light vector.
+/// @param n Fresnel normal.
+/// @param F Fresnel response, e.g. F0.
+/// @return Fresnel reflectivity.
 glm::vec3 FSchlick(glm::vec3 const& v, glm::vec3 const& n, glm::vec3 const& F)
 {
 	float c = 1.0F - glm::clamp(glm::dot(n, v), 0.0F, 1.0F);
@@ -48,6 +69,11 @@ glm::vec3 FSchlick(glm::vec3 const& v, glm::vec3 const& n, glm::vec3 const& F)
 	return F + (1.0F - F) * c5;
 }
 
+/// @brief Schlick's G1 term for Smith's G term eval.
+/// @param v Vector direction to eval G1 for.
+/// @param n G term normal.
+/// @param alpha G term roughness.
+/// @return 
 float G1Schlick(glm::vec3 const& v, glm::vec3 const& n, float alpha)
 {
 	float const NoV = glm::clamp(glm::dot(n, v), 0.0F, 1.0F);
@@ -70,9 +96,10 @@ glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::ve
 {
 	// Set up microfacet model parameters for Disney BSDF
 	float const alpha = material.roughness * material.roughness;
+	float const alpha_g = glm::pow(0.5F + 0.5F * alpha, 2.0F);
 
 	// Sample GGX lobe
-	glm::vec3 const m = sampleGGX(sampler, wi, alpha); // TODO(nemjit001): sample visible normals for reduced noise
+	glm::vec3 const m = sampleGGX(sampler, alpha);
 
 	// Calculate F0 constants for dielectric material
 	float const eta1 = material.IOR - 1.0F;
@@ -115,10 +142,11 @@ glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::ve
 		// Evaluate specular direction
 		wo = glm::reflect(-wi, m);
 
-		// Calculate D and G terms w/ adjusted g-term alpha
-		float const alpha_g = glm::pow(0.5F + 0.5F * alpha, 2.0F);
+		// Calculate D
 		float const D = DGGX(m, n, alpha);
-		float const G = G1Schlick(wi, m, alpha) * G1Schlick(wo, m, alpha_g); // Smith's G term
+
+		// Calculate Smith's G term
+		float const G = G1Schlick(wi, m, alpha_g) * G1Schlick(wo, m, alpha_g);
 
 		// Cook-Torrance BSDF using Walter et al. formulation
 		brdf = (D * G * F) / (4.0F * glm::abs(glm::dot(wi, n)) * glm::abs(glm::dot(wo, n)));
