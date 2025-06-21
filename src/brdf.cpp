@@ -40,8 +40,7 @@ glm::vec3 sampleGGX(Sampler& sampler, float alpha)
 	float const phi = TWO_PI * eta.y;
 
 	// Transform polar to vector
-	glm::vec3 const m = glm::vec3(glm::sin(theta) * glm::cos(phi), glm::sin(theta) * glm::sin(phi), glm::cos(theta));
-	return m;
+	return glm::vec3(glm::sin(theta) * glm::cos(phi), glm::sin(theta) * glm::sin(phi), glm::cos(theta));
 }
 
 /// @brief The GGX microfacet distribution as given by Physically Based Shading at Disney.
@@ -142,11 +141,9 @@ glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::ve
 		// Evaluate specular direction
 		wo = glm::reflect(-wi, m);
 
-		// Calculate D
+		// Calculate D & Smith's G term
 		float const D = DGGX(m, n, alpha);
-
-		// Calculate Smith's G term
-		float const G = G1Schlick(wi, m, alpha_g) * G1Schlick(wo, m, alpha_g);
+		float const G = G1Schlick(wi, m, alpha) * G1Schlick(wo, m, alpha);
 
 		// Cook-Torrance BSDF using Walter et al. formulation
 		brdf = (D * G * F) / (4.0F * glm::abs(glm::dot(wi, n)) * glm::abs(glm::dot(wo, n)));
