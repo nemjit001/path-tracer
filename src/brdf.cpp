@@ -59,13 +59,13 @@ float DGGX(glm::vec3 const& m, glm::vec3 const& n, float alpha)
 /// @brief Schlick's Fresnel approximation.
 /// @param v Light vector.
 /// @param n Fresnel normal.
-/// @param F Fresnel response, e.g. F0.
+/// @param F0 Fresnel response.
 /// @return Fresnel reflectivity.
-glm::vec3 FSchlick(glm::vec3 const& v, glm::vec3 const& n, glm::vec3 const& F)
+glm::vec3 FSchlick(glm::vec3 const& v, glm::vec3 const& n, glm::vec3 const& F0)
 {
 	float c = 1.0F - glm::clamp(glm::dot(n, v), 0.0F, 1.0F);
 	float c5 = c * c * c * c * c;
-	return F + (1.0F - F) * c5;
+	return F0 + (1.0F - F0) * c5;
 }
 
 /// @brief Schlick's G1 term for Smith's G term eval.
@@ -94,7 +94,7 @@ glm::vec3 evaluateLambertianDiffuseBRDF(Sampler& sampler, Material const& materi
 glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::vec3 const& wi, glm::vec3 const& n, glm::vec3& wo)
 {
 	// Set up microfacet model parameters for Disney BSDF
-	float const alpha = material.roughness * material.roughness;
+	float const alpha = glm::max(material.roughness * material.roughness, 1e-3F);
 	float const alpha_g = glm::pow(0.5F + 0.5F * alpha, 2.0F);
 
 	// Sample GGX lobe
@@ -105,41 +105,43 @@ glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::ve
 	float const eta2 = material.IOR + 1.0F;
 	float const iorRatio = eta1 / eta2;
 
-	// Lerp between dielectric and metallic F0
+	// Lerp between dielectric and metallic F0 & calculate microfacet Fresnel
 	glm::vec3 const F0 = glm::mix(glm::vec3(iorRatio * iorRatio), material.baseColor, material.metallic);
-
-	// Calculate Microfacet Fresnel
 	glm::vec3 const F = FSchlick(wi, m, F0);
 
-	// Set up MIS weights
-	float const diffuseWeight = glm::min(1.0F - material.metallic, 1.0F - luma(F)); // We want to only sample diffuse based on Fresnel if the material is dielectric
-	float const specularWeight = 1.0F - diffuseWeight;
-
-	// Evaluate diffuse lobe
+	// Evaluate diffuse lobe & calculate retroreflective response for microfacet surface
 	glm::vec3 const diffwo = sampleCosineWeightedHemisphere(sampler);
-	float const F90 = 0.5F + 2.0F * material.roughness * glm::dot(wi, m) * glm::dot(wi, m);
-	glm::vec3 const a = FSchlick(wi, m, glm::vec3(F90));
-	glm::vec3 const b = FSchlick(diffwo, m, glm::vec3(F90));
+	float const F90 = 0.5F + 2.0F * alpha * glm::dot(wi, m) * glm::dot(wi, m);
+	float const ci = 1.0F - glm::dot(wi, m);
+	float const co = 1.0F - glm::dot(diffwo, m);
+	float const a = 1.0F + (F90 - 1.0F) * ci * ci * ci * ci * ci;
+	float const b = 1.0F + (F90 - 1.0F) * co * co * co * co * co;
 
-	// Evaluate specular lobe
+	// Evaluate specular lobe & calculate D and G microfacet terms
 	glm::vec3 const specwo = glm::reflect(-wi, m);
 	float const D = DGGX(m, n, alpha);
 	float const G = G1Schlick(wi, m, alpha_g) * G1Schlick(specwo, m, alpha_g);
 
 	// Calculate lobe PDFs
-	float const diffpdf = glm::dot(diffwo, n) * INV_PI;
-	float const specpdf = (D * glm::dot(m, n)) / (4.0F * glm::abs(glm::dot(specwo, m)));
-	float const compositepdf = diffuseWeight * diffpdf + specularWeight * specpdf;
+	float const diffPDF = glm::dot(diffwo, n) * INV_PI;
+	float const specPDF = (D * glm::dot(m, n)) / (4.0F * glm::abs(glm::dot(specwo, m)));
+
+	// Calculate normalized lobe sample weights
+	float diffWeight = 1.0F - material.metallic; // Only sample diffuse when dielectric
+	float specWeight = luma(F); // Sample specular based on Fresnel luma
+	float const invWeights = 1.0F / (diffWeight + specWeight);
+	diffWeight *= invWeights;
+	specWeight *= invWeights;
 
 	glm::vec3 brdf{};
-	float pdf{};
-	float MISweight{};
-	if (sampler.sample() < diffuseWeight)
+	float pdf = 0.0F;
+	float pdfWeight = 0.0F;
+	if (sampler.sample() < diffWeight)
 	{
 		// Lambertian diffuse w/ highlight
 		brdf = material.baseColor * INV_PI * a * b;
-		pdf = diffpdf;
-		MISweight = (diffuseWeight * diffpdf) / compositepdf;
+		pdf = diffPDF;
+		pdfWeight = diffWeight;
 
 		wo = diffwo;
 	}
@@ -147,11 +149,14 @@ glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::ve
 	{
 		// Cook-Torrance BSDF using Walter et al. formulation
 		brdf = (D * G * F) / (4.0F * glm::abs(glm::dot(wi, n)) * glm::abs(glm::dot(specwo, n)));
-		pdf = specpdf;
-		MISweight = (specularWeight * specpdf) / compositepdf;
+		pdf = specPDF;
+		pdfWeight = specWeight;
 
 		wo = specwo;
 	}
 
-	return MISweight * ((brdf * glm::dot(wo, n)) / pdf);
+	// Calculate composite MIS PDF & this MIS sample's weight
+	float const compositePDF = (diffWeight * diffPDF + specWeight * specPDF);
+	float const MISWeight = (pdfWeight * pdf) / compositePDF;
+	return MISWeight * ((brdf * glm::abs(glm::dot(wo, n))) / pdf);
 }

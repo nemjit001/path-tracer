@@ -122,8 +122,10 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			// Set up TBN matrix for global/local frame conversion (also adjusts normal and tangent for backface hits)
 			bool const isBackfaceHit = glm::dot(rayDirection, normal) > 0.0F;
 			glm::vec3 const N = (isBackfaceHit ? -normal : normal);
-			glm::vec3 const T = (isBackfaceHit ? -tangent : tangent);
+			glm::vec3 const _T = (isBackfaceHit ? -tangent : tangent);
+			glm::vec3 const T = glm::normalize(_T - glm::dot(_T, N) * N);
 			glm::vec3 const B = glm::normalize(glm::cross(N, T));
+
 			glm::mat3 const TBN(T, B, N);
 			glm::mat3 const iTBN(glm::transpose(TBN));
 
@@ -142,7 +144,7 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			glm::vec3 const O = glm::vec3(position) + D * tMin; // avoid self intersections by offsetting ray a small amount
 			current = tinybvh::Ray({ O.x, O.y, O.z }, { D.x, D.y, D.z });
 			
-#if			RUSSIAN_ROULETTE
+#if			DO_RUSSIAN_ROULETTE
 			// Do russian roulette (terminate if throughput has low contribution)
 			float const p = glm::clamp(glm::max(throughput.r, glm::max(throughput.g, throughput.b)), 0.0F, 1.0F);
 			if (p < sampler.sample()) {
@@ -150,7 +152,7 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			}
 
 			throughput /= p;
-#endif		// RUSSIAN_ROULETTE
+#endif		// DO_RUSSIAN_ROULETTE
 		}
 	}
 
