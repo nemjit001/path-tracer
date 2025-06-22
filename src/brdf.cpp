@@ -111,45 +111,47 @@ glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::ve
 	// Calculate Microfacet Fresnel
 	glm::vec3 const F = FSchlick(wi, m, F0);
 
-	// Set up sampling weights
-	// TODO(nemjit001): Check why this works as MIS without PDF eval in weight calc
-	float diffW = 1.0F - material.metallic;
-	float specW = luma(F);
-	float const invW = 1.0F / (diffW + specW);
-	diffW *= invW;
-	specW *= invW;
+	// Set up MIS weights
+	float const diffuseWeight = glm::min(1.0F - material.metallic, 1.0F - luma(F)); // We want to only sample diffuse based on Fresnel if the material is dielectric
+	float const specularWeight = 1.0F - diffuseWeight;
+
+	// Evaluate diffuse lobe
+	glm::vec3 const diffwo = sampleCosineWeightedHemisphere(sampler);
+	float const F90 = 0.5F + 2.0F * material.roughness * glm::dot(wi, m) * glm::dot(wi, m);
+	glm::vec3 const a = FSchlick(wi, m, glm::vec3(F90));
+	glm::vec3 const b = FSchlick(diffwo, m, glm::vec3(F90));
+
+	// Evaluate specular lobe
+	glm::vec3 const specwo = glm::reflect(-wi, m);
+	float const D = DGGX(m, n, alpha);
+	float const G = G1Schlick(wi, m, alpha_g) * G1Schlick(specwo, m, alpha_g);
+
+	// Calculate lobe PDFs
+	float const diffpdf = glm::dot(diffwo, n) * INV_PI;
+	float const specpdf = (D * glm::dot(m, n)) / (4.0F * glm::abs(glm::dot(specwo, m)));
+	float const compositepdf = diffuseWeight * diffpdf + specularWeight * specpdf;
 
 	glm::vec3 brdf{};
 	float pdf{};
-	if (sampler.sample() < diffW)
+	float MISweight{};
+	if (sampler.sample() < diffuseWeight)
 	{
-		// Sample diffuse lobe
-		wo = sampleCosineWeightedHemisphere(sampler);
-
-		// Calculate retroreflective highlight
-		float const F90 = 0.5F + 2.0F * material.roughness * glm::dot(wi, m) * glm::dot(wi, m);
-		glm::vec3 const a = FSchlick(wi, m, glm::vec3(F90));
-		glm::vec3 const b = FSchlick(wo, m, glm::vec3(F90));
-
 		// Lambertian diffuse w/ highlight
 		brdf = material.baseColor * INV_PI * a * b;
-		pdf = glm::dot(wo, n) * INV_PI;
-		pdf *= diffW; // Apply diffuse MIS weight
+		pdf = diffpdf;
+		MISweight = (diffuseWeight * diffpdf) / compositepdf;
+
+		wo = diffwo;
 	}
 	else
 	{
-		// Evaluate specular direction
-		wo = glm::reflect(-wi, m);
-
-		// Calculate D & Smith's G term
-		float const D = DGGX(m, n, alpha);
-		float const G = G1Schlick(wi, m, alpha) * G1Schlick(wo, m, alpha);
-
 		// Cook-Torrance BSDF using Walter et al. formulation
-		brdf = (D * G * F) / (4.0F * glm::abs(glm::dot(wi, n)) * glm::abs(glm::dot(wo, n)));
-		pdf = (D * glm::dot(m, n)) / (4.0F * glm::abs(glm::dot(wo, m)));
-		pdf *= specW; // Apply specular MIS weight
+		brdf = (D * G * F) / (4.0F * glm::abs(glm::dot(wi, n)) * glm::abs(glm::dot(specwo, n)));
+		pdf = specpdf;
+		MISweight = (specularWeight * specpdf) / compositepdf;
+
+		wo = specwo;
 	}
 
-	return ((brdf * glm::dot(wo, n)) / pdf);
+	return MISweight * ((brdf * glm::dot(wo, n)) / pdf);
 }
