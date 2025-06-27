@@ -137,7 +137,7 @@ glm::vec3 PathTracedIntegrator::trace(Ray const& ray, Sampler& sampler) const
 			glm::vec3 const shadingNormal = iTBN * N;
 			glm::vec3 const wi = iTBN * -rayDirection;
 			glm::vec3 wo;
-			throughput *= evaluateDisneyBRDF(sampler, material, wi, shadingNormal, wo);
+			throughput *= sampleDisneyBRDF(sampler, material, wi, shadingNormal, wo);
 
 			// Set up outgoing ray
 			glm::vec3 const D = TBN * wo;

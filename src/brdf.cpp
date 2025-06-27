@@ -82,8 +82,44 @@ float G1Schlick(glm::vec3 const& v, glm::vec3 const& n, float alpha)
 	return NoV / (NoV - (k * NoV) + k);
 }
 
-glm::vec3 evaluateLambertianDiffuseBRDF(Sampler& sampler, Material const& material, glm::vec3 const& wi, glm::vec3 const& n, glm::vec3& wo)
+glm::vec3 evaluateDisneyDiffuseBRDF(glm::vec3 const& baseColor, float alpha, glm::vec3 const& wi, glm::vec3 const& wo, glm::vec3 const& m, glm::vec3 const& n)
 {
+	float const F90 = 0.5F + 2.0F * alpha * glm::dot(wi, m) * glm::dot(wi, m);
+	float const ci = 1.0F - glm::dot(wi, m);
+	float const co = 1.0F - glm::dot(wo, m);
+
+	float const a = 1.0F + (F90 - 1.0F) * ci * ci * ci * ci * ci;
+	float const b = 1.0F + (F90 - 1.0F) * co * co * co * co * co;
+
+	return baseColor * INV_PI * a * b;
+}
+
+glm::vec3 evaluateDisneySpecularBRDF(float alpha, glm::vec3 const& F0, glm::vec3 const& wi, glm::vec3 const& wo, glm::vec3 const& m, glm::vec3 const& n)
+{
+	float const alpha_g = glm::pow(0.5F + 0.5F * alpha, 2.0F);
+
+	float const D = DGGX(m, n, alpha);
+	float const G = G1Schlick(wi, m, alpha_g) * G1Schlick(wo, m, alpha_g);
+	glm::vec3 const F = FSchlick(wi, m, F0);
+
+	return (D * G * F) / (4.0F * glm::abs(glm::dot(wi, n)) * glm::abs(glm::dot(wo, n)));
+}
+
+float evaluateCosineWeightedPDF(glm::vec3 const& n, glm::vec3 const& wo)
+{
+	return glm::dot(wo, n) * INV_PI;
+}
+
+float evaluateGGXPDF(float alpha, glm::vec3 const& m, glm::vec3 const& n, glm::vec3 const& wo)
+{
+	float const D = DGGX(m, n, alpha);
+	return (D * glm::dot(m, n)) / (4.0F * glm::abs(glm::dot(wo, m)));
+}
+
+glm::vec3 sampleLambertianDiffuseBRDF(Sampler& sampler, Material const& material, glm::vec3 const& wi, glm::vec3 const& n, glm::vec3& wo)
+{
+	(void)(wi); // wi is unused for lambertian diffuse
+
 	wo = sampleCosineWeightedHemisphere(sampler);
 	glm::vec3 const brdf = material.baseColor * INV_PI;
 	float const pdf = glm::dot(wo, n) * INV_PI;
@@ -91,13 +127,10 @@ glm::vec3 evaluateLambertianDiffuseBRDF(Sampler& sampler, Material const& materi
 	return (brdf * glm::dot(wo, n)) / pdf;
 }
 
-glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::vec3 const& wi, glm::vec3 const& n, glm::vec3& wo)
+glm::vec3 sampleDisneyBRDF(Sampler& sampler, Material const& material, glm::vec3 const& wi, glm::vec3 const& n, glm::vec3& wo)
 {
-	// Set up microfacet model parameters for Disney BSDF
+	// Set up microfacet model parameters for Disney BSDF & sample specular lobe
 	float const alpha = glm::max(material.roughness * material.roughness, 1e-3F);
-	float const alpha_g = glm::pow(0.5F + 0.5F * alpha, 2.0F);
-
-	// Sample GGX lobe
 	glm::vec3 const m = sampleGGX(sampler, alpha);
 
 	// Calculate F0 constants for dielectric material
@@ -109,26 +142,17 @@ glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::ve
 	glm::vec3 const F0 = glm::mix(glm::vec3(iorRatio * iorRatio), material.baseColor, material.metallic);
 	glm::vec3 const F = FSchlick(wi, m, F0);
 
-	// Evaluate diffuse lobe & calculate retroreflective response for microfacet surface
+	// Evaluate diffuse & sepcular directions
 	glm::vec3 const diffwo = sampleCosineWeightedHemisphere(sampler);
-	float const F90 = 0.5F + 2.0F * alpha * glm::dot(wi, m) * glm::dot(wi, m);
-	float const ci = 1.0F - glm::dot(wi, m);
-	float const co = 1.0F - glm::dot(diffwo, m);
-	float const a = 1.0F + (F90 - 1.0F) * ci * ci * ci * ci * ci;
-	float const b = 1.0F + (F90 - 1.0F) * co * co * co * co * co;
-
-	// Evaluate specular lobe & calculate D and G microfacet terms
 	glm::vec3 const specwo = glm::reflect(-wi, m);
-	float const D = DGGX(m, n, alpha);
-	float const G = G1Schlick(wi, m, alpha_g) * G1Schlick(specwo, m, alpha_g);
 
 	// Calculate lobe PDFs
-	float const diffPDF = glm::dot(diffwo, n) * INV_PI;
-	float const specPDF = (D * glm::dot(m, n)) / (4.0F * glm::abs(glm::dot(specwo, m)));
+	float const diffPDF = evaluateCosineWeightedPDF(n, diffwo);
+	float const specPDF = evaluateGGXPDF(alpha, m, n, specwo);
 
 	// Calculate normalized lobe sample weights
-	float diffWeight = 1.0F - material.metallic; // Only sample diffuse when dielectric
-	float specWeight = luma(F); // Sample specular based on Fresnel luma
+	float diffWeight = 1.0F - material.metallic;	// Only sample diffuse when dielectric is non-zero
+	float specWeight = luma(F);						// Sample specular based on Fresnel luma
 	float const invWeights = 1.0F / (diffWeight + specWeight);
 	diffWeight *= invWeights;
 	specWeight *= invWeights;
@@ -139,7 +163,7 @@ glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::ve
 	if (sampler.sample() < diffWeight)
 	{
 		// Lambertian diffuse w/ highlight
-		brdf = material.baseColor * INV_PI * a * b;
+		brdf = evaluateDisneyDiffuseBRDF(material.baseColor, alpha, wi, diffwo, m, n);
 		pdf = diffPDF;
 		pdfWeight = diffWeight;
 
@@ -148,7 +172,7 @@ glm::vec3 evaluateDisneyBRDF(Sampler& sampler, Material const& material, glm::ve
 	else
 	{
 		// Cook-Torrance BSDF using Walter et al. formulation
-		brdf = (D * G * F) / (4.0F * glm::abs(glm::dot(wi, n)) * glm::abs(glm::dot(specwo, n)));
+		brdf = evaluateDisneySpecularBRDF(alpha, F0, wi, specwo, m, n);
 		pdf = specPDF;
 		pdfWeight = specWeight;
 
